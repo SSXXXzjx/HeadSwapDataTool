@@ -51,7 +51,11 @@
 
   function setActive(slot) {
     state.activeSlot = slot;
-    for (const card of cards) card.classList.toggle("active", card.dataset.slot === slot);
+    for (const card of cards) {
+      const selected = card.dataset.slot === slot;
+      card.classList.toggle("active", selected);
+      card.querySelector(".image-stage").setAttribute("aria-pressed", String(selected));
+    }
   }
 
   function setBusy(busy) {
@@ -151,10 +155,12 @@
       const imageElement = card.querySelector(".card-image");
       card.classList.toggle("has-image", Boolean(image));
       card.querySelector(".empty-state").hidden = Boolean(image);
-      card.querySelector(".replace-button").hidden = !image;
-      card.querySelector(".preview-affordance").hidden = !image;
+      card.querySelector(".preview-button").hidden = !image;
+      const chooseButton = card.querySelector(".choose-image-button");
+      chooseButton.querySelector("span").textContent = image ? "替换图片" : "选择图片";
+      chooseButton.setAttribute("aria-label", `${image ? "替换" : "选择"}${labels[slot]}图片`);
       imageElement.hidden = !image;
-      card.querySelector(".image-stage").setAttribute("aria-label", `${image ? "预览" : "添加"}${labels[slot]}图片`);
+      card.querySelector(".image-stage").setAttribute("aria-label", `选中${labels[slot]}粘贴区`);
       if (image) {
         const url = URL.createObjectURL(image.blob);
         imageUrls.set(slot, url);
@@ -388,8 +394,8 @@
   for (const card of cards) {
     const slot = card.dataset.slot;
     const input = card.querySelector(".image-input");
-    card.addEventListener("pointerdown", () => setActive(slot));
-    card.addEventListener("focusin", () => setActive(slot));
+    card.addEventListener("pointerdown", () => { if (canEdit()) setActive(slot); });
+    card.addEventListener("focusin", () => { if (canEdit()) setActive(slot); });
     card.addEventListener("keydown", event => {
       if (event.target === card && (event.key === "Enter" || event.key === " ")) {
         event.preventDefault();
@@ -398,10 +404,16 @@
     });
     card.querySelector(".image-stage").addEventListener("click", () => {
       if (!canEdit()) return;
-      if (currentGroup().images[slot]) showPreview(slot);
-      else input.click();
+      setActive(slot);
     });
-    card.querySelector(".replace-button").addEventListener("click", () => { if (canEdit()) input.click(); });
+    card.querySelector(".choose-image-button").addEventListener("click", () => {
+      if (!canEdit()) return;
+      setActive(slot);
+      input.click();
+    });
+    card.querySelector(".preview-button").addEventListener("click", () => {
+      if (canEdit()) showPreview(slot);
+    });
     input.addEventListener("change", () => { const file = input.files[0]; input.value = ""; void addImage(slot, file); });
     let dragDepth = 0;
     card.addEventListener("dragenter", event => { event.preventDefault(); dragDepth++; if (!state.busy && state.directoryReady) card.classList.add("dragging"); });
