@@ -169,14 +169,20 @@ window.DatasetStore = (() => {
         if (!Number.isSafeInteger(id) || id < 1) continue;
         if (match[2].toLowerCase() === "txt" && slot !== "target") continue;
         const group = findGroup(id);
-        const file = await handle.getFile();
-        if (match[2].toLowerCase() === "txt") {
-          group.prompt = await file.text();
-        } else {
-          const blob = new Blob([await file.arrayBuffer()], { type: "image/png" });
-          const bitmap = await createImageBitmap(blob);
-          group.images[slot] = { blob, width: bitmap.width, height: bitmap.height };
-          bitmap.close();
+        const isPrompt = match[2].toLowerCase() === "txt";
+        try {
+          const file = await handle.getFile();
+          if (isPrompt) {
+            group.prompt = new TextDecoder("utf-8", { fatal: true }).decode(await file.arrayBuffer());
+          } else {
+            group.images[slot] = await DatasetInspection.readImage(file);
+          }
+        } catch (error) {
+          if (isPrompt) group.promptError = "提示词文件无法读取或不是有效的 UTF-8";
+          else {
+            group.imageErrors ??= {};
+            group.imageErrors[slot] = "图片损坏或无法读取";
+          }
         }
       }
     }

@@ -7,6 +7,7 @@
   <title>换头数据集</title>
   <link rel="stylesheet" href="styles.css">
   <script src="dataset-store.js" defer></script>
+  <script src="dataset-inspection.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -26,13 +27,14 @@
         <div class="brand-mark"><svg><use href="#icon-image"/></svg></div>
         <div><div class="eyebrow">DATASET STUDIO</div><h1>换头数据集<span class="version"> / 01</span></h1></div>
       </div>
+      <nav class="page-tabs" aria-label="页面导航"><button id="editor-tab" class="page-tab selected" aria-current="page">分组编辑</button><button id="inspection-tab" class="page-tab">完整性检查</button></nav>
       <div class="workspace-actions">
         <span id="save-status" class="save-status" role="status" aria-live="polite"><i></i><span>正在载入</span></span>
         <button id="folder-button" class="button folder-button"><svg><use href="#icon-folder"/></svg><span id="folder-label">选择数据集文件夹</span></button>
       </div>
     </header>
 
-    <section class="editor" aria-label="分组编辑">
+    <section id="editor-page" class="editor" aria-label="分组编辑">
       <div class="section-bar">
         <div class="group-heading"><span class="eyebrow">GROUP</span><span id="group-number">000001</span><span id="group-badge" class="badge">待完成</span></div>
         <span class="completion"><span id="filled-count">0</span><span class="muted"> / 3</span><span class="completion-line"><i id="completion-progress"></i></span></span>
@@ -45,7 +47,7 @@
           <input class="image-input" type="file" accept="image/*" hidden>
         </article>
         <article class="image-card" data-slot="target" tabindex="0" aria-label="人物底图，图片输入区">
-          <div class="card-header"><div class="card-title"><span class="card-number">02</span><h2>人物底图</h2></div><span class="directory-label">target</span><button class="button choose-image-button" aria-label="选择人物底图图片"><svg><use href="#icon-folder"/></svg><span>选择图片</span></button></div>
+          <div class="card-header"><div class="card-title"><span class="card-number">02</span><h2>人物底图 <span class="optional-label">可暂缺</span></h2></div><span class="directory-label">target</span><button class="button choose-image-button" aria-label="选择人物底图图片"><svg><use href="#icon-folder"/></svg><span>选择图片</span></button></div>
           <button class="image-stage" aria-label="选中人物底图粘贴区" aria-pressed="false"><span class="selection-indicator">已选中 · Ctrl+V 粘贴</span><span class="empty-state"><span class="add-icon"><svg><use href="#icon-plus"/></svg></span><span class="empty-title">拖入图片</span><span class="empty-hint">点击选中后 Ctrl+V 粘贴</span></span><img class="card-image" hidden alt="人物底图"></button>
           <div class="card-footer"><span class="image-info">等待图片</span><button class="preview-button" aria-label="预览人物底图" title="放大预览" hidden><svg><use href="#icon-expand"/></svg><span>预览</span></button></div>
           <input class="image-input" type="file" accept="image/*" hidden>
@@ -57,7 +59,12 @@
           <input class="image-input" type="file" accept="image/*" hidden>
         </article>
       </div>
-      <div class="prompt-panel"><div class="prompt-label"><label for="prompt">提示词</label><span id="prompt-file">target / 000001.txt</span><button id="apply-prompt-all" class="button apply-prompt-button">应用到全部组</button></div><textarea id="prompt" placeholder="输入提示词…" spellcheck="false" aria-label="当前组提示词"></textarea></div>
+      <div class="prompt-panel"><div class="prompt-label"><label for="prompt">提示词</label><span id="prompt-file">target / 000001.txt</span><button id="apply-prompt-all" class="button apply-prompt-button">应用到全部组</button></div><textarea id="prompt" placeholder="输入提示词（必填）…" spellcheck="false" aria-label="当前组提示词" required></textarea></div>
+    </section>
+
+    <section id="inspection-page" class="inspection-page" aria-labelledby="inspection-title" hidden>
+      <div class="inspection-toolbar"><div><h2 id="inspection-title">完整性检查</h2><p id="inspection-summary" role="status" aria-live="polite">尚未检查</p></div><button id="inspect-button" class="button primary-button"><svg><use href="#icon-check"/></svg><span>一键检查全部组</span></button></div>
+      <div class="inspection-table-container"><table class="inspection-table"><thead><tr><th scope="col">组编号</th><th scope="col">问题</th><th scope="col">操作</th></tr></thead><tbody id="inspection-results"><tr class="inspection-empty"><td colspan="3">点击上方按钮开始检查</td></tr></tbody></table></div>
     </section>
 
     <footer class="navigation">

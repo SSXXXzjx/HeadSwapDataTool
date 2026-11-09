@@ -5,7 +5,7 @@
   const elements = Object.fromEntries([...document.querySelectorAll("[id]")].map(element => [element.id, element]));
   const cards = [...document.querySelectorAll(".image-card")];
   const labels = { reference: "参考人头", target: "人物底图", result: "换头结果" };
-  const state = { groups: [], index: 0, activeSlot: "reference", directory: null, directoryReady: false, busy: true, saving: false, failed: false };
+  const state = { groups: [], index: 0, activeSlot: "reference", directory: null, directoryReady: false, busy: true, saving: false, failed: false, page: "editor" };
   const imageUrls = new Map();
   let queue = Promise.resolve();
   let promptTimer;
@@ -14,7 +14,8 @@
   let dialogActive = false;
 
   const currentGroup = () => state.groups[state.index];
-  const isComplete = group => Object.keys(store.slots).every(slot => group.images[slot]);
+  const isComplete = group => Object.keys(store.slots).every(slot => group.images[slot]) && Boolean(group.prompt.trim()) && !group.promptError;
+  const canAdvance = group => group.images.reference && group.images.result && group.prompt.trim() && !group.promptError;
   const hasContent = group => group.prompt || Object.values(group.images).some(Boolean);
   const settings = () => ({ index: state.index, directory: state.directory });
 
@@ -67,6 +68,9 @@
     elements.prompt.disabled = locked;
     elements["group-select"].disabled = locked;
     elements["previous-button"].disabled = locked || state.index === 0;
+    for (const control of document.querySelectorAll(".group-navigation button, .group-navigation select")) {
+      if (state.page === "inspection") control.disabled = true;
+    }
     for (const card of cards) {
       card.querySelector(".image-input").disabled = locked;
       card.tabIndex = locked ? -1 : 0;
@@ -96,8 +100,8 @@
     const filled = Object.values(group.images).filter(Boolean).length;
     elements["filled-count"].textContent = filled;
     elements["completion-progress"].style.width = `${filled / 3 * 100}%`;
-    elements["group-badge"].textContent = filled === 3 ? "已完成" : "待完成";
-    elements["group-badge"].classList.toggle("complete", filled === 3);
+    elements["group-badge"].textContent = isComplete(group) ? "已完成" : "待补全";
+    elements["group-badge"].classList.toggle("complete", isComplete(group));
     elements["completed-total"].textContent = state.groups.filter(isComplete).length;
     elements["total-groups"].textContent = state.groups.length;
     elements["group-select"].replaceChildren(...state.groups.map((item, index) => {
@@ -169,6 +173,10 @@
         imageElement.removeAttribute("src");
       }
       renderImageInfo(card.querySelector(".image-info"), image);
+      if (!image && group.imageErrors?.[slot]) {
+        card.querySelector(".image-info").textContent = group.imageErrors[slot];
+        chooseButton.querySelector("span").textContent = "替换图片";
+      }
     }
     renderSummary();
     setBusy(state.busy);
@@ -228,7 +236,7 @@
     setActive(slot);
     setBusy(true);
     try {
-      if (currentGroup().images[slot]) {
+      if (currentGroup().images[slot] || currentGroup().imageErrors?.[slot]) {
         const confirmed = await message("替换图片？", `将替换第 ${store.filename(currentGroup().id)} 组的${labels[slot]}。`, "确认替换", true);
         if (!confirmed) return;
       }
@@ -236,6 +244,8 @@
       const image = await store.convertImage(file);
       const group = currentGroup();
       group.images[slot] = image;
+      if (group.imageErrors) delete group.imageErrors[slot];
+      invalidateInspection();
       if (!group.dirtySlots.includes(slot)) group.dirtySlots.push(slot);
       group.promptDirty = true;
       render();
@@ -248,12 +258,13 @@
     }
   }
 
-  async function navigate(index) {
+  async function navigate(index, fromInspection = false) {
     if (!canEdit()) return;
-    if (index > state.index && !isComplete(currentGroup())) {
+    if (!fromInspection && index > state.index && !canAdvance(currentGroup())) {
       elements["group-select"].value = state.index;
-      const missing = Object.keys(labels).filter(slot => !currentGroup().images[slot]).map(slot => labels[slot]);
-      await message("请先完成当前组", `还缺少：${missing.join("、")}。\n三张图片齐全后才能进入下一组。`, "继续编辑");
+      const missing = ["reference", "result"].filter(slot => !currentGroup().images[slot]).map(slot => labels[slot]);
+      if (!currentGroup().prompt.trim() || currentGroup().promptError) missing.push("有效提示词");
+      await message("请先完成必填内容", `还缺少：${missing.join("、")}。\n人物底图可暂缺，其余内容填写后才能进入下一组。`, "继续编辑");
       return;
     }
     setBusy(true);
@@ -262,8 +273,10 @@
       if (index >= state.groups.length) {
         const id = Math.max(...state.groups.map(group => group.id)) + 1;
         state.groups.push(store.emptyGroup(id));
+        invalidateInspection();
       }
       state.index = Math.max(0, Math.min(index, state.groups.length - 1));
+      if (fromInspection) showPage("editor");
       render();
       await scheduleSave();
     } finally {
@@ -274,14 +287,21 @@
   async function applyPromptToAll() {
     if (!canEdit()) return;
     const prompt = elements.prompt.value;
+    if (!prompt.trim()) {
+      await message("提示词不可为空", "请填写有效提示词后再应用到全部组。");
+      return;
+    }
     setBusy(true);
     try {
       const confirmed = await message("应用到全部组？", `将用当前${prompt ? "提示词" : "空提示词"}覆盖现有 ${state.groups.length} 组的提示词，并自动保存。`, "确认应用", true);
       if (!confirmed || !await flush()) return;
       for (const group of state.groups) {
         group.prompt = prompt;
+        delete group.promptError;
         group.promptDirty = true;
       }
+      invalidateInspection();
+      renderSummary();
       const snapshot = structuredClone(state.groups);
       const capturedSettings = settings();
       const directory = state.directory;
@@ -352,6 +372,7 @@
         }
       }
       state.directory = root;
+      invalidateInspection();
       state.directoryReady = true;
       setStatus("正在同步文件夹", "pending");
       for (const group of state.groups) {
@@ -378,6 +399,90 @@
     } finally {
       if (!state.directoryReady) requireDirectory(elements["directory-message"].textContent);
       render();
+      setBusy(false);
+    }
+  }
+
+  function showPage(page) {
+    state.page = page;
+    elements["editor-page"].hidden = page !== "editor";
+    elements["inspection-page"].hidden = page !== "inspection";
+    for (const name of ["editor", "inspection"]) {
+      elements[`${name}-tab`].classList.toggle("selected", name === page);
+      if (name === page) elements[`${name}-tab`].setAttribute("aria-current", "page");
+      else elements[`${name}-tab`].removeAttribute("aria-current");
+    }
+    setBusy(state.busy);
+  }
+
+  function invalidateInspection() {
+    elements["inspection-summary"].textContent = "内容已修改，请重新检查";
+    elements["inspection-results"].replaceChildren();
+  }
+
+  async function switchPage(page) {
+    if (!canEdit()) return;
+    setBusy(true);
+    try {
+      if (await flush()) showPage(page);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function inspectGroups() {
+    if (!canEdit()) return;
+    setBusy(true);
+    try {
+      if (!await flush()) return;
+      elements["inspection-summary"].textContent = "正在检查保存目录…";
+      elements["inspection-results"].replaceChildren();
+      const selectedId = currentGroup().id;
+      const records = await DatasetInspection.scan(state.directory, state.groups, (done, total) => {
+        elements["inspection-summary"].textContent = `正在检查 ${done} / ${total} 组`;
+      });
+      const groups = records.map(record => record.group);
+      const selectedIndex = Math.max(0, groups.findIndex(group => group.id === selectedId));
+      await store.replaceWorkspace(groups, { index: selectedIndex, directory: state.directory });
+      state.groups = groups;
+      state.index = selectedIndex;
+      render();
+      const problems = records.filter(record => record.issues.length);
+      elements["inspection-summary"].textContent = `共 ${records.length} 组 · 完整 ${records.length - problems.length} 组 · 待处理 ${problems.length} 组`;
+      for (const record of problems) {
+        const row = document.createElement("tr");
+        row.dataset.groupId = record.group.id;
+        const number = document.createElement("td");
+        number.textContent = store.filename(record.group.id);
+        const issues = document.createElement("td");
+        issues.textContent = record.issues.join("；");
+        const action = document.createElement("td");
+        const button = document.createElement("button");
+        button.className = "button inspection-jump";
+        button.textContent = "前往编辑";
+        button.setAttribute("aria-label", `编辑第 ${store.filename(record.group.id)} 组`);
+        const jump = () => { void navigate(state.groups.findIndex(group => group.id === record.group.id), true); };
+        button.addEventListener("click", event => { event.stopPropagation(); jump(); });
+        row.addEventListener("click", jump);
+        action.append(button);
+        row.append(number, issues, action);
+        elements["inspection-results"].append(row);
+      }
+      if (!problems.length) {
+        const row = document.createElement("tr");
+        row.className = "inspection-empty";
+        const cell = document.createElement("td");
+        cell.colSpan = 3;
+        cell.textContent = "所有组均完整";
+        row.append(cell);
+        elements["inspection-results"].append(row);
+      }
+      setStatus("检查完成");
+    } catch (error) {
+      elements["inspection-results"].replaceChildren();
+      elements["inspection-summary"].textContent = `检查未完成：${error.message}`;
+      await message("检查未完成", `无法完成目录检查：${error.message}`);
+    } finally {
       setBusy(false);
     }
   }
@@ -432,7 +537,7 @@
   document.addEventListener("dragover", event => event.preventDefault());
   document.addEventListener("drop", event => event.preventDefault());
   document.addEventListener("paste", event => {
-    if (state.busy || dialogActive || elements["preview-dialog"].open || event.target.closest?.("textarea, input")) return;
+    if (state.page !== "editor" || state.busy || dialogActive || elements["preview-dialog"].open || event.target.closest?.("textarea, input")) return;
     const image = [...(event.clipboardData?.items || [])].find(item => item.type.startsWith("image/"));
     if (image) { event.preventDefault(); void addImage(state.activeSlot, image.getAsFile()); }
   });
@@ -441,7 +546,10 @@
     revision++;
     state.saving = true;
     currentGroup().prompt = elements.prompt.value;
+    delete currentGroup().promptError;
     currentGroup().promptDirty = true;
+    invalidateInspection();
+    renderSummary();
     setStatus("正在保存", "pending");
     clearTimeout(promptTimer);
     promptTimer = setTimeout(() => { promptTimer = null; scheduleSave(); }, 300);
@@ -454,6 +562,9 @@
   elements["group-select"].addEventListener("change", event => { void navigate(Number(event.target.value)); });
   elements["folder-button"].addEventListener("click", () => { void connectDirectory(); });
   elements["apply-prompt-all"].addEventListener("click", () => { void applyPromptToAll(); });
+  elements["editor-tab"].addEventListener("click", () => { void switchPage("editor"); });
+  elements["inspection-tab"].addEventListener("click", () => { void switchPage("inspection"); });
+  elements["inspect-button"].addEventListener("click", () => { void inspectGroups(); });
   elements["directory-confirm"].addEventListener("click", () => { void connectDirectory(); });
   elements["directory-dialog"].addEventListener("cancel", event => event.preventDefault());
   elements["save-status"].addEventListener("click", () => {
@@ -467,7 +578,7 @@
   });
   elements["preview-dialog"].addEventListener("close", () => elements["preview-image"].removeAttribute("src"));
   document.addEventListener("keydown", event => {
-    if (state.busy || dialogActive || document.querySelector("dialog[open]") || event.target.closest?.("textarea, input, select")) return;
+    if (state.page !== "editor" || state.busy || dialogActive || document.querySelector("dialog[open]") || event.target.closest?.("textarea, input, select")) return;
     if (event.key === "ArrowRight") { event.preventDefault(); void navigate(state.index + 1); }
     if (event.key === "ArrowLeft" && state.index > 0) { event.preventDefault(); void navigate(state.index - 1); }
   });
