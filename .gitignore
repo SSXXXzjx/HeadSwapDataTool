@@ -1,0 +1,5 @@
+head_swap_dataset/
+*.zip
+*.tmp
+.DS_Store
+Thumbs.db
