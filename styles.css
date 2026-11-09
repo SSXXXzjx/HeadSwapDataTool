@@ -93,3 +93,13 @@ select{font-size:14px;font-weight:700}
 .image-card[aria-disabled="true"]{border-color:var(--border)}
 @media(max-width:1000px){h1{font-size:21px}.button{font-size:13px}.save-status{font-size:12px}.card-title{gap:6px}}
 @media(max-width:720px){h1{font-size:18px}h2{font-size:14px}.button{font-size:12px}.save-status{font-size:11px}.folder-button{max-width:150px}#group-number{font-size:24px}.empty-title{font-size:14px}.empty-hint{font-size:10px}.prompt-label label{font-size:14px}.navigation-meta{font-size:10px}.navigation-meta>span:first-child{font-size:15px}select{font-size:12px}.badge{font-size:11px}}
+.image-card{grid-template-rows:59px minmax(0,1fr) 68px}
+.image-info{display:flex;flex-direction:column;gap:5px;min-width:0;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.4}
+.image-dimensions{font-size:13px;font-weight:600;color:#c5ceca}
+.image-details{font-size:11px;color:#929e98}
+.replace-button{flex-shrink:0}
+.prompt-panel{grid-template-rows:32px minmax(0,1fr)}
+.apply-prompt-button{height:30px;margin-left:auto;padding:0 12px;font-size:12px;white-space:nowrap;flex-shrink:0}
+@media(max-width:1000px){.image-card{grid-template-rows:54px minmax(0,1fr) 70px}.card-footer{padding:0 12px}.image-dimensions{font-size:12px}.image-details{font-size:10px}}
+@media(max-width:720px){.image-card{grid-template-rows:48px minmax(0,1fr) 82px}.card-footer{padding:0 8px;gap:4px}.image-dimensions{font-size:10px}.image-details{font-size:9px}.prompt-label{gap:8px}.prompt-label #prompt-file{font-size:9px}.apply-prompt-button{font-size:11px;padding:0 9px}.image-info{gap:3px}}
+@media(max-height:660px){.image-card{grid-template-rows:44px minmax(0,1fr) 64px}.prompt-panel{grid-template-rows:30px minmax(0,1fr)}}

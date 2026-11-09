@@ -61,6 +61,15 @@ window.DatasetStore = (() => {
     await completed;
   }
 
+  async function saveGroups(groups, settings) {
+    const connection = await database();
+    const transaction = connection.transaction(["groups", "settings"], "readwrite");
+    const completed = transactionComplete(transaction);
+    for (const group of groups) transaction.objectStore("groups").put(group);
+    transaction.objectStore("settings").put(settings, "workspace");
+    await completed;
+  }
+
   function filename(id) {
     return String(id).padStart(6, "0");
   }
@@ -174,5 +183,5 @@ window.DatasetStore = (() => {
     return [...groups.values()].sort((first, second) => first.id - second.id);
   }
 
-  return { slots, restore, save, replaceWorkspace, filename, emptyGroup, convertImage, writeGroup, validateDirectory, loadDirectory };
+  return { slots, restore, save, saveGroups, replaceWorkspace, filename, emptyGroup, convertImage, writeGroup, validateDirectory, loadDirectory };
 })();

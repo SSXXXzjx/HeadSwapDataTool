@@ -103,6 +103,39 @@
     }));
   }
 
+  function imageRatio(width, height) {
+    let divisor = width;
+    let remainder = height;
+    while (remainder) {
+      const previous = remainder;
+      remainder = divisor % remainder;
+      divisor = previous;
+    }
+    return `${width / divisor}:${height / divisor}`;
+  }
+
+  function fileSize(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(2)} KiB`;
+    return `${(bytes / 1024 ** 2).toFixed(2)} MiB`;
+  }
+
+  function renderImageInfo(element, image) {
+    if (!image) {
+      element.textContent = "等待图片";
+      element.removeAttribute("title");
+      return;
+    }
+    const dimensions = document.createElement("span");
+    dimensions.className = "image-dimensions";
+    dimensions.textContent = `${image.width} × ${image.height} px`;
+    const details = document.createElement("span");
+    details.className = "image-details";
+    details.textContent = `${imageRatio(image.width, image.height)} · ${fileSize(image.blob.size)} · PNG`;
+    element.replaceChildren(dimensions, details);
+    element.title = `尺寸：${dimensions.textContent}\n宽高比：${imageRatio(image.width, image.height)}\nPNG 文件大小：${fileSize(image.blob.size)}（${image.blob.size} 字节）`;
+  }
+
   function render() {
     const group = currentGroup();
     for (const url of imageUrls.values()) URL.revokeObjectURL(url);
@@ -126,11 +159,10 @@
         const url = URL.createObjectURL(image.blob);
         imageUrls.set(slot, url);
         imageElement.src = url;
-        card.querySelector(".image-info").textContent = `${image.width} × ${image.height} · PNG`;
       } else {
         imageElement.removeAttribute("src");
-        card.querySelector(".image-info").textContent = "等待图片";
       }
+      renderImageInfo(card.querySelector(".image-info"), image);
     }
     renderSummary();
     setBusy(state.busy);
@@ -228,6 +260,44 @@
       state.index = Math.max(0, Math.min(index, state.groups.length - 1));
       render();
       await scheduleSave();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applyPromptToAll() {
+    if (!canEdit()) return;
+    const prompt = elements.prompt.value;
+    setBusy(true);
+    try {
+      const confirmed = await message("应用到全部组？", `将用当前${prompt ? "提示词" : "空提示词"}覆盖现有 ${state.groups.length} 组的提示词，并自动保存。`, "确认应用", true);
+      if (!confirmed || !await flush()) return;
+      for (const group of state.groups) {
+        group.prompt = prompt;
+        group.promptDirty = true;
+      }
+      const snapshot = structuredClone(state.groups);
+      const capturedSettings = settings();
+      const directory = state.directory;
+      revision++;
+      state.saving = true;
+      state.failed = false;
+      setStatus("正在应用提示词", "pending");
+      queue = queue.catch(() => {}).then(async () => {
+        await store.saveGroups(snapshot, capturedSettings);
+        for (const group of state.groups) {
+          await store.writeGroup(directory, group);
+          group.promptDirty = false;
+          await store.save(group, capturedSettings);
+        }
+      }).then(() => {
+        setStatus("已自动保存");
+        toast(`已应用到全部 ${state.groups.length} 组`);
+      }).catch(error => {
+        state.failed = true;
+        requireDirectory(`批量保存未完成：${error.message}。请重新确定保存路径后继续保存。`);
+      }).finally(() => { state.saving = false; });
+      await queue;
     } finally {
       setBusy(false);
     }
@@ -371,6 +441,7 @@
   elements["previous-button"].addEventListener("click", () => { void navigate(state.index - 1); });
   elements["group-select"].addEventListener("change", event => { void navigate(Number(event.target.value)); });
   elements["folder-button"].addEventListener("click", () => { void connectDirectory(); });
+  elements["apply-prompt-all"].addEventListener("click", () => { void applyPromptToAll(); });
   elements["directory-confirm"].addEventListener("click", () => { void connectDirectory(); });
   elements["directory-dialog"].addEventListener("cancel", event => event.preventDefault());
   elements["save-status"].addEventListener("click", () => {
